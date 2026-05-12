@@ -31,6 +31,9 @@ func NewJobRepository() (domainrepo.JobRepository, error) {
 
 // FetchActiveJobs retrieves all active jobs for a repository or organization
 func (j *JobRepositoryImpl) FetchActiveJobs(ctx context.Context, owner, repo, org string) ([]*entity.Job, error) {
+	if repo == "" && org == "" {
+		return nil, fmt.Errorf("both repo and org are empty, cannot determine scope for fetching active jobs")
+	}
 	var allJobs []*entity.Job
 
 	// Fetch in_progress workflow runs
@@ -68,8 +71,9 @@ func (j *JobRepositoryImpl) FetchActiveJobs(ctx context.Context, owner, repo, or
 
 // getWorkflowRunsPath constructs the API path for fetching workflow runs with a specific status
 func (j *JobRepositoryImpl) getWorkflowRunsPath(owner, repo, org, status string) string {
-	if org != "" {
-		return fmt.Sprintf("orgs/%s/actions/runs?status=%s", org, status)
+	if repo == "" && org != "" {
+		// Org-level workflow runs (requires GitHub Enterprise or appropriate permissions)
+		return fmt.Sprintf("orgs/%s/actions/runners?status=%s", org, status)
 	}
 	return fmt.Sprintf("repos/%s/%s/actions/runs?status=%s", owner, repo, status)
 }
@@ -142,6 +146,19 @@ func (j *JobRepositoryImpl) getJobsForRun(run workflowRun, org, owner, repo stri
 	runOwner, runRepo, err := j.extractOwnerAndRepo(org, owner, repo, run.Repository.FullName)
 	if err != nil {
 		return nil, err
+	}
+
+	if runOwner == "" || runRepo == "" {
+		fullName := run.Repository.FullName
+		if fullName == "" {
+			return nil, fmt.Errorf("cannot determine repository for run %d", run.ID)
+		}
+		parts := strings.SplitN(fullName, "/", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid repository full_name format for run %d: %s", run.ID, fullName)
+		}
+		runOwner = parts[0]
+		runRepo = parts[1]
 	}
 
 	path := fmt.Sprintf("repos/%s/%s/actions/runs/%d/jobs", runOwner, runRepo, run.ID)
