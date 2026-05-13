@@ -71,9 +71,8 @@ func (j *JobRepositoryImpl) FetchActiveJobs(ctx context.Context, owner, repo, or
 
 // getWorkflowRunsPath constructs the API path for fetching workflow runs with a specific status
 func (j *JobRepositoryImpl) getWorkflowRunsPath(owner, repo, org, status string) string {
-	if repo == "" && org != "" {
-		// Org-level workflow runs (requires GitHub Enterprise or appropriate permissions)
-		return fmt.Sprintf("orgs/%s/actions/runners?status=%s", org, status)
+	if org != "" {
+		return fmt.Sprintf("repos/%s/%s/actions/runs?status=%s", org, repo,status)
 	}
 	return fmt.Sprintf("repos/%s/%s/actions/runs?status=%s", owner, repo, status)
 }

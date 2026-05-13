@@ -79,6 +79,13 @@ func runMonitor(_ *cobra.Command, _ []string) error {
 
 	if org != "" {
 		orgName = org
+		if repo != "" {
+			parts := strings.Split(repo, "/")
+			if len(parts) == 2 {
+				owner = parts[0]
+				repoName = parts[1]
+			}
+		}
 	} else if repo != "" {
 		parts := strings.Split(repo, "/")
 		if len(parts) != 2 {
