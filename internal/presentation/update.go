@@ -99,12 +99,13 @@ func (m *Model) updateTableRows() {
 		execTime := "-"
 
 		// Find active job for this runner
-		for _, job := range m.jobs {
-			if job.IsAssignedToRunner(runner.ID) {
-				jobName = fmt.Sprintf("%s (%s)", job.Name, job.WorkflowName)
-				execTime = formatDuration(job.GetExecutionDurationAt(m.currentTime))
-				break
-			}
+		for _, job := range m.jobs {  
+			// 优先使用 ID 匹配，备选使用 Name 匹配  
+			if job.IsAssignedToRunner(runner.ID) || (job.RunnerName != nil && *job.RunnerName == runner.Name) {  
+				jobName = fmt.Sprintf("%s (%s)", job.Name, job.WorkflowName)  
+				execTime = formatDuration(job.GetExecutionDurationAt(m.currentTime))  
+				break  
+			}  
 		}
 
 		rows = append(rows, table.Row{
