@@ -16,7 +16,7 @@ env:
 
 defaults:
   run:
-    shell: pwsh
+    shell: bash
 
 jobs:
   update_release_draft:
@@ -30,12 +30,94 @@ jobs:
         with:
           commitish: main
 
-  release:
-    name: Release
-    environment: release
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: update_release_draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            platform_name: darwin-arm64
+          - goos: linux
+            goarch: amd64
+            platform_name: linux-amd64
+          - goos: linux
+            goarch: arm64
+            platform_name: linux-arm64
+          - goos: linux
+            goarch: s390x
+            platform_name: linux-s390x
+    env:
+      VERSION: ${{ needs.update_release_draft.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get binary name
+        id: binary
+        run: |
+          MODULE_NAME=$(go list -m)
+          BINARY_NAME=$(basename "$MODULE_NAME")
+          echo "name=${BINARY_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          BINARY="${{ steps.binary.outputs.name }}"
+          echo "🔨 Building ${BINARY} for ${{ matrix.goos }}/${{ matrix.goarch }}..."
+
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${BINARY}" .
+          
+          echo "✅ Build complete"
+          file "${BINARY}"
+
+      - name: Package artifact
+        id: package
+        run: |
+          BINARY="${{ steps.binary.outputs.name }}"
+          ARCHIVE_NAME="${BINARY}_${VERSION}_${{ matrix.platform_name }}"
+
+          # 统一使用 tar.gz 打包（包括 darwin）
+          tar czf "${ARCHIVE_NAME}.tar.gz" "${BINARY}" LICENSE* README* 2>/dev/null || \
+          tar czf "${ARCHIVE_NAME}.tar.gz" "${BINARY}"
+
+          # 生成 SHA256 校验和
+          sha256sum "${ARCHIVE_NAME}.tar.gz" > "${ARCHIVE_NAME}.tar.gz.sha256"
+
+          echo "archive=${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=${ARCHIVE_NAME}.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+
+          echo "📦 Package contents:"
+          ls -lh "${ARCHIVE_NAME}"*
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform_name }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+          retention-days: 1
+
+  release:
+    name: Publish Release
+    environment: release
+    runs-on: ubuntu-latest
+    needs: [update_release_draft, build]
     permissions:
       contents: write
       attestations: write
@@ -48,13 +130,37 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Build and upload release artifacts
-        uses: cli/gh-extension-precompile@v2
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
         with:
-          release_tag: ${{ env.VERSION }}
-          go_version_file: go.mod
-          generate_attestations: true
-          draft_release: false
+          path: dist/
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: |
+          echo "📦 Release artifacts:"
+          ls -lhR dist/
+
+      - name: Generate combined checksums
+        run: |
+          cd dist
+          # 合并所有单独的 sha256 文件为一个总的 checksums 文件
+          cat *.sha256 > checksums.txt
+          echo ""
+          echo "🔐 Combined checksums:"
+          cat checksums.txt
+
+      - name: Generate attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.tar.gz
+
+      - name: Upload release assets
+        run: |
+          echo "🚀 Uploading assets to release ${VERSION}..."
+          gh release upload "${VERSION}" dist/*.tar.gz dist/*.sha256 dist/checksums.txt \
+            --clobber
 
       - name: Publish draft release
         uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
@@ -65,6 +171,7 @@ jobs:
 
       - name: Get semver
         id: get-semver
+        shell: pwsh
         run: |
           $tag = $env:VERSION
           if (-not $tag) {
@@ -101,17 +208,19 @@ jobs:
           ref: ${{ env.VERSION }}
 
       - name: Update major tag
-        if: ${{ steps.get-semver.outputs.major != 'v0' }}
+        if: ${{ steps.get-semver.outputs.major_tag != '' }}
         env:
-          MAJOR_TAG: ${{ steps.get-semver.outputs.major }}
+          MAJOR_TAG: ${{ steps.get-semver.outputs.major_tag }}
+        shell: pwsh
         run: |
           $refspec = "refs/tags/${env:VERSION}:refs/tags/${env:MAJOR_TAG}"
           git push -f origin $refspec
 
       - name: Update minor tag
-        if: ${{ steps.get-semver.outputs.minor != 'v0.0' }}
+        if: ${{ steps.get-semver.outputs.minor_tag != '' }}
         env:
-          MINOR_TAG: ${{ steps.get-semver.outputs.minor }}
+          MINOR_TAG: ${{ steps.get-semver.outputs.minor_tag }}
+        shell: pwsh
         run: |
           $refspec = "refs/tags/${env:VERSION}:refs/tags/${env:MINOR_TAG}"
           git push -f origin $refspec
