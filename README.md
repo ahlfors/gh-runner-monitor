@@ -12,6 +12,22 @@ A GitHub CLI extension that provides real-time monitoring of GitHub Actions self
 
 <img width="904" height="195" alt="スクリーンショット 2025-11-03 16 14 13" src="https://github.com/user-attachments/assets/4d45ea0c-3374-4d16-a264-d478fdee290b" />
 
+## Precondition
+1. install gh
+macos:
+```bash
+brew install gh
+```
+ubuntu:
+```bash
+sudo apt install gh
+```
+
+3. setup token and permissions
+<img width="736" height="394" alt="Screenshot 2026-05-13 at 20 33 39" src="https://github.com/user-attachments/assets/1940adf4-109a-4b7e-8a65-b8245aa92ee1" />
+<img width="737" height="357" alt="Screenshot 2026-05-13 at 20 33 44" src="https://github.com/user-attachments/assets/582da26b-1af2-4df0-ac89-c8761cf50ba6" />
+
+
 ## Installation
 
 ```bash
