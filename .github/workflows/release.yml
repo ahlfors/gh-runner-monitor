@@ -31,7 +31,7 @@ jobs:
           commitish: main
 
   build:
-    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    name: Build ${{ matrix.platform_name }}
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: update_release_draft
@@ -78,39 +78,25 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           BINARY="${{ steps.binary.outputs.name }}"
-          echo "🔨 Building ${BINARY} for ${{ matrix.goos }}/${{ matrix.goarch }}..."
+          ARTIFACT_NAME="${BINARY}_${VERSION}_${{ matrix.platform_name }}"
 
-          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${BINARY}" .
-          
-          echo "✅ Build complete"
-          file "${BINARY}"
-
-      - name: Package artifact
-        id: package
-        run: |
-          BINARY="${{ steps.binary.outputs.name }}"
-          ARCHIVE_NAME="${BINARY}_${VERSION}_${{ matrix.platform_name }}"
-
-          # 统一使用 tar.gz 打包（包括 darwin）
-          tar czf "${ARCHIVE_NAME}.tar.gz" "${BINARY}" LICENSE* README* 2>/dev/null || \
-          tar czf "${ARCHIVE_NAME}.tar.gz" "${BINARY}"
+          echo "🔨 Building for ${{ matrix.goos }}/${{ matrix.goarch }}..."
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${ARTIFACT_NAME}" .
 
           # 生成 SHA256 校验和
-          sha256sum "${ARCHIVE_NAME}.tar.gz" > "${ARCHIVE_NAME}.tar.gz.sha256"
+          sha256sum "${ARTIFACT_NAME}" > "${ARTIFACT_NAME}.sha256"
 
-          echo "archive=${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "checksum=${ARCHIVE_NAME}.tar.gz.sha256" >> "$GITHUB_OUTPUT"
-
-          echo "📦 Package contents:"
-          ls -lh "${ARCHIVE_NAME}"*
+          echo "✅ Build complete:"
+          ls -lh "${ARTIFACT_NAME}"*
+          file "${ARTIFACT_NAME}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform_name }}
           path: |
-            ${{ steps.package.outputs.archive }}
-            ${{ steps.package.outputs.checksum }}
+            ${{ steps.binary.outputs.name }}_${{ env.VERSION }}_${{ matrix.platform_name }}
+            ${{ steps.binary.outputs.name }}_${{ env.VERSION }}_${{ matrix.platform_name }}.sha256
           retention-days: 1
 
   release:
@@ -145,21 +131,28 @@ jobs:
       - name: Generate combined checksums
         run: |
           cd dist
-          # 合并所有单独的 sha256 文件为一个总的 checksums 文件
           cat *.sha256 > checksums.txt
-          echo ""
           echo "🔐 Combined checksums:"
           cat checksums.txt
 
       - name: Generate attestations
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/*.tar.gz
+          subject-path: dist/*
+          subject-exclude: "*.sha256,checksums.txt"
 
       - name: Upload release assets
         run: |
           echo "🚀 Uploading assets to release ${VERSION}..."
-          gh release upload "${VERSION}" dist/*.tar.gz dist/*.sha256 dist/checksums.txt \
+          # 上传裸二进制 + 校验和
+          cd dist
+          gh release upload "${VERSION}" \
+            *darwin-arm64 \
+            *linux-amd64 \
+            *linux-arm64 \
+            *linux-s390x \
+            *.sha256 \
+            checksums.txt \
             --clobber
 
       - name: Publish draft release
