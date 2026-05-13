@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"time"
 
+	"github.com/VeyronSakai/gh-runner-monitor/internal/domain/entity" 
 	"github.com/VeyronSakai/gh-runner-monitor/internal/domain/value_object"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -75,6 +77,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateTableRows updates the table with the current runner and job data
 func (m *Model) updateTableRows() {
+	    // 1. 定义优先级映射  
+    priority := map[entity.RunnerStatus]int{  
+        entity.StatusActive:  1,  
+        entity.StatusIdle:    2,  
+        entity.StatusOffline: 3,  
+    }  
+  
+    // 2. 对 m.runners 进行排序  
+    sort.Slice(m.runners, func(i, j int) bool {  
+        return priority[m.runners[i].Status] < priority[m.runners[j].Status]  
+    })  
 	rows := make([]table.Row, 0, len(m.runners))
 	for _, runner := range m.runners {
 		statusIcon := getStatusIcon(runner.Status)
