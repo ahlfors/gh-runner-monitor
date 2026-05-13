@@ -15,7 +15,7 @@ A GitHub CLI extension that provides real-time monitoring of GitHub Actions self
 ## Installation
 
 ```bash
-gh extension install VeyronSakai/gh-runner-monitor
+gh extension install ahlfors/gh-runner-monitor
 ```
 
 ## Usage
@@ -30,9 +30,9 @@ gh runner-monitor
 gh runner-monitor --repo owner/repo
 ```
 
-### Monitor organization
+### Monitor all organization self-hosted runners and jobs of one repo 
 ```bash
-gh runner-monitor --org organization-name
+gh runner-monitor --org organization-name --repo owner/repo
 ```
 
 ### Custom update interval
@@ -62,7 +62,7 @@ gh runner-monitor --interval 10  # Update every 10 seconds
 ### Building from source
 
 ```bash
-git clone https://github.com/VeyronSakai/gh-runner-monitor.git
+git clone https://github.com/ahlfors/gh-runner-monitor.git
 cd gh-runner-monitor
 go build -o gh-runner-monitor
 ```
