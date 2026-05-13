@@ -132,12 +132,13 @@ func (m *Model) openJobLog() tea.Cmd {
 		runner := m.runners[selectedRow]
 
 		// Find the active job for this runner
-		var jobURL string
-		for _, job := range m.jobs {
-			if job.IsAssignedToRunner(runner.ID) {
-				jobURL = job.HtmlUrl
-				break
-			}
+		var jobURL string  
+		for _, job := range m.jobs {  
+			// 优先使用 ID 匹配，备选使用 Name 匹配  
+			if job.IsAssignedToRunner(runner.ID) || (job.RunnerName != nil && *job.RunnerName == runner.Name) {  
+				jobURL = job.HtmlUrl  
+				break  
+			}  
 		}
 
 		// If no job URL found, do nothing
