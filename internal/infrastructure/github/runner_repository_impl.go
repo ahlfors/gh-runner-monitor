@@ -32,13 +32,13 @@ func NewRunnerRepository() (domainrepo.RunnerRepository, error) {
 // FetchRunners retrieves all runners for a repository or organization
 func (r *RunnerRepositoryImpl) FetchRunners(ctx context.Context, owner, repo, org string) ([]*entity.Runner, error) {
 	path := r.getRunnersPath(owner, repo, org)
-	runners, err := r.requestGetRunners(path)
+	runners, err := r.requestGetAllRunners(path)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]*entity.Runner, 0, len(runners.Runners))
-	for _, runner := range runners.Runners {
+	result := make([]*entity.Runner, 0, len(runners))
+	for _, runner := range runners {
 		status := entity.StatusOffline
 		if runner.Status == "online" {
 			if runner.Busy {
@@ -73,20 +73,39 @@ func (r *RunnerRepositoryImpl) getRunnersPath(owner, repo, org string) string {
 	return fmt.Sprintf("repos/%s/%s/actions/runners", owner, repo)
 }
 
-// requestGetRunners fetches runners from GitHub API
-func (r *RunnerRepositoryImpl) requestGetRunners(path string) (*runnersResponse, error) {
-	response, err := r.restClient.Request(http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to request runners: %w", err)
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+// requestGetAllRunners fetches ALL runners from GitHub API with pagination
+func (r *RunnerRepositoryImpl) requestGetAllRunners(path string) ([]runnerResponse, error) {
+	const perPage = 100
+	var allRunners []runnerResponse
+	page := 1
 
-	var runners runnersResponse
-	if err := json.NewDecoder(response.Body).Decode(&runners); err != nil {
-		return nil, fmt.Errorf("failed to decode runners response: %w", err)
+	for {
+		pagedPath := fmt.Sprintf("%s?per_page=%d&page=%d", path, perPage, page)
+
+		resp, err := r.restClient.Request(http.MethodGet, pagedPath, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to request runners (page %d): %w", page, err)
+		}
+
+		var runnersResp runnersResponse
+		if err := json.NewDecoder(resp.Body).Decode(&runnersResp); err != nil {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("failed to decode runners response (page %d): %w", page, err)
+		}
+		_ = resp.Body.Close()
+
+		allRunners = append(allRunners, runnersResp.Runners...)
+
+		if len(allRunners) >= runnersResp.TotalCount {
+			break
+		}
+
+		if len(runnersResp.Runners) < perPage {
+			break
+		}
+
+		page++
 	}
 
-	return &runners, nil
+	return allRunners, nil
 }
